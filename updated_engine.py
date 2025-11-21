@@ -1,4 +1,6 @@
 import math
+import numpy as np
+from scipy.optimize import brentq
  
 class Engine:
     '''
@@ -109,12 +111,17 @@ class Engine:
         gamma = 1.33
         Cp = gamma*self.R/(gamma - 1)
  
-        T_o_turb = T_o - work_c / (Cp*(1 + self.f))
- 
+        T_o_turb = T_o - work_c / (Cp*(1 - self.b + self.f))
         Tr = T_o_turb / T_o
         eff_t = (Tr - 1) / (Tr**(1/0.92) - 1)
- 
-        P_o_turb = P_o * (1 - (1/eff_t)*(1 - Tr**((gamma - 1)/gamma)))
+        print(eff_t)
+        def equation(Pr):
+            exp1 = ((gamma-1)/gamma)
+            exp2 = ((gamma-1)/(gamma*0.92))
+            return eff_t-(Pr**exp1-1)/(Pr**exp2-1)
+        Pr=brentq(equation,0.01,0.99)
+        print(Pr)
+        P_o_turb = Pr*P_o
  
         return P_o_turb, T_o_turb
  
