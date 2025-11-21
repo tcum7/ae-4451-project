@@ -97,7 +97,7 @@ class Engine:
         Cp = gamma*self.R/(gamma - 1)
         Q = 45e6
  
-        T_o_burner = (eff_burner*self.f*Q/Cp + T_o) / (1 + self.f)
+        T_o_burner = (eff_burner*self.f*Q/Cp + (1-self.b)*T_o)/(1-self.b+self.f)
         P_o_burner = P_o * 0.98
  
         return T_o_burner, P_o_burner
@@ -244,7 +244,7 @@ if __name__ == "__main__":
         T_a=220,       # K
         P_a=10000,     # Pa
         M=1.5,
-        Prc=20,
+        Prc=30,
         Prf=1.2,
         Beta=2,
         b=0.1,
