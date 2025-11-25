@@ -1,6 +1,5 @@
 import math
-import numpy as np
-from scipy.optimize import brentq
+
  
 class Engine:
     """
@@ -339,6 +338,182 @@ class Engine:
     def tsfc(self, S_eff):
         return (self.f + self.f_ab) / S_eff
  
+    
+    # ------------------------------------------------------------
+    # Change engine cycle aspects
+    # ------------------------------------------------------------
+    def change(self, Prf, Prc, Beta, b, f, f_ab):
+        self.Prf = Prf
+        self.Prc = Prc
+        self.Beta = Beta
+        self.b = b
+        self.f = f
+        self.f_ab = f_ab
+        return
+    
+    # ------------------------------------------------------------
+    # Change freestream
+    # ------------------------------------------------------------
+    def changeFree(self,T_a,P_a,M):
+        self.T_a = T_a
+        self.P_a = P_a
+        self.M = M
+        return
+
+    
+    # ------------------------------------------------------------
+    # Part 1 Iterator to minimize TSFC
+    # ------------------------------------------------------------
+    def tsfcCase(self):
+
+         # 1. Upstream components
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        P_o5_1,  T_o5_1  = self.turbine(P_o4, T_o4, w_c)
+        P_o5m,  T_o5m  = self.turbinemixer(P_o5_1, T_o5_1, T_o3)
+        P_o5_2, T_o5_2 = self.fanturbine(P_o5m, T_o5m, w_ft)
+        P_o6,  T_o6, f_max_ab, withinTemp_o6  = self.afterburner(P_o5_2, T_o5_2)
+
+        # 2. Separate nozzles
+
+        T_e, u_e, P_e = self.corenozzle(P_o6,  T_o6)
+        T_ef,  u_ef, P_ef  = self.fannozzle(P_o3f, T_o3f)
+ 
+        # 3. Combined nozzle
+        T_o7, gammma_nm, P_o7, T_ec, u_ec, p_ec = self.combinednozzle(P_o6, T_o6, P_o3f, T_o3f)
+ 
+        # 4. Thrust and TSFC for both nozzle configurations
+        S_eff_sep,  tsfc_sep, n_th_sep, n_p_sep, n_o_sep  = self.separate_nozzle_performance(u_e, u_ef, drag)
+        S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb = self.combined_nozzle_performance(u_ec, drag)
+        if tsfc_sep<0:
+            return tsfc_comb
+        elif tsfc_comb<0:
+            return tsfc_sep
+        else:
+            return min(tsfc_sep,tsfc_comb)
+    
+    def turbineTemperatureContraint(self):
+
+         # 1. Upstream components
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        return f_max-self.f
+    
+    def velocityConstraint(self):
+
+         # 1. Upstream components
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        P_o5_1,  T_o5_1  = self.turbine(P_o4, T_o4, w_c)
+        P_o5m,  T_o5m  = self.turbinemixer(P_o5_1, T_o5_1, T_o3)
+        P_o5_2, T_o5_2 = self.fanturbine(P_o5m, T_o5m, w_ft)
+        P_o6,  T_o6, f_max_ab, withinTemp_o6  = self.afterburner(P_o5_2, T_o5_2)
+
+          # 2. Separate nozzles
+
+        T_e, u_e, P_e = self.corenozzle(P_o6,  T_o6)
+        T_ef,  u_ef, P_ef  = self.fannozzle(P_o3f, T_o3f)
+ 
+        # 3. Combined nozzle
+        T_o7, gammma_nm, P_o7, T_ec, u_ec, p_ec = self.combinednozzle(P_o6, T_o6, P_o3f, T_o3f)
+ 
+        # 4. Thrust and TSFC for both nozzle configurations
+        S_eff_sep,  tsfc_sep, n_th_sep, n_p_sep, n_o_sep  = self.separate_nozzle_performance(u_e, u_ef, drag)
+        S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb = self.combined_nozzle_performance(u_ec, drag)
+
+        return min(u_ec,u_e)
+        
+
+    def abTemperatureContraint(self):
+
+         # 1. Upstream components
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        P_o5_1,  T_o5_1  = self.turbine(P_o4, T_o4, w_c)
+        P_o5m,  T_o5m  = self.turbinemixer(P_o5_1, T_o5_1, T_o3)
+        P_o5_2, T_o5_2 = self.fanturbine(P_o5m, T_o5m, w_ft)
+        P_o6,  T_o6, f_max_ab, withinTemp_o6  = self.afterburner(P_o5_2, T_o5_2)
+        return f_max_ab-self.f_ab
+    
+    def withinFanTurbineWork(self, Prf, Prc, Beta, b, f, f_ab):
+        self.change(Prf, Prc, Beta, b, f, f_ab)
+         # 1. Upstream components
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        P_o5_1,  T_o5_1  = self.turbine(P_o4, T_o4, w_c)
+        P_o5m,  T_o5m  = self.turbinemixer(P_o5_1, T_o5_1, T_o3)
+        P_o5_2, T_o5_2 = self.fanturbine(P_o5m, T_o5m, w_ft)
+        return T_o5_2
+
+        
+    
+    def minimumThrust(self,thrustReq):
+
+         # 1. Upstream components
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        P_o5_1,  T_o5_1  = self.turbine(P_o4, T_o4, w_c)
+        P_o5m,  T_o5m  = self.turbinemixer(P_o5_1, T_o5_1, T_o3)
+        P_o5_2, T_o5_2 = self.fanturbine(P_o5m, T_o5m, w_ft)
+        P_o6,  T_o6, f_max_ab, withinTemp_o6  = self.afterburner(P_o5_2, T_o5_2)
+
+          # 2. Separate nozzles
+
+        T_e, u_e, P_e = self.corenozzle(P_o6,  T_o6)
+        T_ef,  u_ef, P_ef  = self.fannozzle(P_o3f, T_o3f)
+ 
+        # 3. Combined nozzle
+        T_o7, gammma_nm, P_o7, T_ec, u_ec, p_ec = self.combinednozzle(P_o6, T_o6, P_o3f, T_o3f)
+ 
+        # 4. Thrust and TSFC for both nozzle configurations
+        S_eff_sep,  tsfc_sep, n_th_sep, n_p_sep, n_o_sep  = self.separate_nozzle_performance(u_e, u_ef, drag)
+        S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb = self.combined_nozzle_performance(u_ec, drag)
+
+        return max(S_eff_comb,S_eff_sep)-thrustReq
+    
+
+    def maximizeThrust(self):
+
+         # 1. Upstream components
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        P_o5_1,  T_o5_1  = self.turbine(P_o4, T_o4, w_c)
+        P_o5m,  T_o5m  = self.turbinemixer(P_o5_1, T_o5_1, T_o3)
+        P_o5_2, T_o5_2 = self.fanturbine(P_o5m, T_o5m, w_ft)
+        P_o6,  T_o6, f_max_ab, withinTemp_o6  = self.afterburner(P_o5_2, T_o5_2)
+
+          # 2. Separate nozzles
+
+        T_e, u_e, P_e = self.corenozzle(P_o6,  T_o6)
+        T_ef,  u_ef, P_ef  = self.fannozzle(P_o3f, T_o3f)
+ 
+        # 3. Combined nozzle
+        T_o7, gammma_nm, P_o7, T_ec, u_ec, p_ec = self.combinednozzle(P_o6, T_o6, P_o3f, T_o3f)
+ 
+        # 4. Thrust and TSFC for both nozzle configurations
+        S_eff_sep,  tsfc_sep, n_th_sep, n_p_sep, n_o_sep  = self.separate_nozzle_performance(u_e, u_ef, drag)
+        S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb = self.combined_nozzle_performance(u_ec, drag)
+
+        return max(S_eff_comb,S_eff_sep)
+        
+
+
+ 
+ 
     # ------------------------------------------------------------
     # RUN CYCLE
     # ------------------------------------------------------------
@@ -381,7 +556,7 @@ class Engine:
  
             # Fuel pump parameters
             "Fuel pump exit pressure (kPa)":        P_f2/1000,
-            "Fuel pump work (J/kg)":   w_p,
+            "Fuel pump work (kJ/kg)":   w_p/1000,
 
             # Nozzle exit conditions
             "Core nozzle sep (T_e, P_e)":      (T_e, P_e/1000),
@@ -405,73 +580,4 @@ class Engine:
         }
  
  
-# ------------------------------------------------------------
-# EXAMPLE USAGE / ORGANIZED PRINT
-# ------------------------------------------------------------
-if __name__ == "__main__":
-    engine = Engine(
-        T_a=220.0,
-        P_a=10000.0,
-        M=1.5,
-        Prc=30.0,
-        Prf=1.2,
-        Beta=2.0,
-        b=0.1,
-        f=0.018,
-        f_ab=0.01
-    )
- 
-    results = engine.run_cycle()
- 
-    print("\n=== STATION STATES (P (kPa), T(K)) ===")
-    for key in [
-        "Inlet (P_o2, T_o2)",
-        "Fan exit (P_o3f, T_o3f)",
-        "Compressor exit (P_o3, T_o3)",
-        "Burner exit (P_o4, T_o4)",
-        "Core turbine exit (P_o5_1, T_o5_1))",
-        "Turbine mixer exit (P_o5m, T_o5m)",
-        "Fan turbine exit (P_o5_2, T_o5_2)",
-        "Afterburner exit (P_o6,  T_o6)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
 
-    print("\n=== FUEL PUMP ===")
-    for key in [
-        "Fuel pump exit pressure (kPa)",
-        "Fuel pump work (J/kg)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== NOZZLE EXIT CONDITIONS ===")
-    for key in [
-        "Core nozzle sep (T_e, P_e)",
-        "Fan nozzle sep (T_ef, P_ef)",
-        "Combined nozzles (T_o7, gammma_nm, P_o7, T_ec)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== PERFORMANCE: SEPARATE NOZZLES ===")
-    for key in [
-        "Separate Nozzle Speeds (u_e (m/s), u_ef (m/s))",
-        "Separate Nozzle Performance (T/ma (kNs/kg), TSFC (kg/kNs), eff_th (%), eff_p(%), eff_o(%))", 
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== Work Required ===")
-    for key in [
-        "Work Required in kJ/kg (w_c, w_p, w_ft)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== Max F/A Ratios ===")
-    for key in [
-        "Max F/A Ratios (f_max, f_max_ab)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== PERFORMANCE: COMBINED NOZZLE ===")
-    for key in [
-        "Combined Nozzle Performance (u_ec, T/ma, TSFC, eff_th, eff_p, eff_o)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
