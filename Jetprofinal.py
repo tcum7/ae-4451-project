@@ -181,6 +181,9 @@ class Engine:
         T_o_turb = T_o - work_f / (Cp * (1.0 + self.f))
         Tr = T_o_turb / T_o
  
+    
+        if(Tr<0):
+            Pr =0.001
         exp = 0.92 * (gamma - 1.0) / gamma
         Pr = Tr**(1.0 / exp)
         P_o_turb = Pr * P_o
@@ -508,7 +511,7 @@ class Engine:
         S_eff_sep,  tsfc_sep, n_th_sep, n_p_sep, n_o_sep  = self.separate_nozzle_performance(u_e, u_ef, drag)
         S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb = self.combined_nozzle_performance(u_ec, drag)
 
-        return max(S_eff_comb,S_eff_sep)
+        return S_eff_comb
         
 
 

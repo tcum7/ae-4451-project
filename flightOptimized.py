@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
     results = flight_optimal_turbofan_engine.run_cycle()
 
-    print("\n\Flight OPTIMIZATION")
+    print("\nFlight OPTIMIZATION")
     print("Optimal Congifuration for Flight to minimize TSFC: Prc = ", result.x[1], "Prf =", result.x[0], "Beta =", \
           result.x[2], "b = ", result.x[3], "f = ",result.x[4], "f_ab = ",result.x[5])
  
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     
 
 
-    flightOp_groundroll_turbofan_engine = Engine(285, 100*1000, 0, result.x[1], result.x[0], result.x[2], 0.05, 0.02, 0.02)
+    flightOp_groundroll_turbofan_engine = Engine(285, 100*1000, 0, result.x[1], result.x[0], result.x[2], 0.05, 0.01, 0.01)
 
 
     #Minimize TSFC by changing last 3
@@ -171,7 +171,7 @@ if __name__ == "__main__":
 
     def minThrustGround(y):
         flightOp_groundroll_turbofan_engine.change(result.x[0],result.x[1],result.x[2],y[0],y[1],y[2])
-        return flightOp_groundroll_turbofan_engine.minimumThrust(0.86)
+        return flightOp_groundroll_turbofan_engine.minimumThrust(2.8)
     
     def withinWorkGround(y):
         return flightOp_groundroll_turbofan_engine.withinFanTurbineWork(result.x[0],result.x[1],result.x[2],y[0],y[1],y[2])
@@ -184,7 +184,7 @@ if __name__ == "__main__":
 
     ]
 
-    y0 = [0.009, 0.016, 0.001]
+    y0 = [0.009, 0.016, 0.02]
 
     bound = ((0.0,0.12),(0.001,0.2),(0,0.2))
     

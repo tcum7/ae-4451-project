@@ -8,10 +8,10 @@ from scipy.optimize import minimize
 if __name__ == "__main__":
 
     #Part 3
-    #FROM PREVIOUS PARTS
-    Prc = 39.68317
-    Prf = 1.5
-    Beta = 5.4628
+    #FROM PREVIOUS PARTS (Currently from Meeting both Goals)
+    Prc = 48.432
+    Prf = 1.239
+    Beta = 8.2994
 
     #To Iterate
     b = 0.012
@@ -20,25 +20,25 @@ if __name__ == "__main__":
 
     #GroundMaxThrust
 
-    Ground = Engine(285, 100, 0, Prc, Prf, Beta, 0.012, 0.024, 0.032)
+    Ground = Engine(285, 100*1000, 0, Prc, Prf, Beta, 0.012, 0.024, 0.032)
 
 
     def maximizeThrust(y):
-        Ground.change(Prc, Prf, Beta,y[0],y[1],y[2])
+        Ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
         return -Ground.maximizeThrust()
 
 
     def turbineTempWithinGround(y):
-        Ground.change(Prc, Prf, Beta,y[0],y[1],y[2])
+        Ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
         return Ground.turbineTemperatureContraint()
  
     
     def abTempWithinGround(y):
-        Ground.change(Prc, Prf, Beta,y[0],y[1],y[2])
+        Ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
         return Ground.abTemperatureContraint()
     
     def withinWorkGround(y):
-        return Ground.withinFanTurbineWork(Prc, Prf, Beta,y[0],y[1],y[2])
+        return Ground.withinFanTurbineWork(Prf, Prc, Beta,y[0],y[1],y[2])
     
     constrain = [
         {'type':'ineq','fun':withinWorkGround},
@@ -46,10 +46,21 @@ if __name__ == "__main__":
         {'type':'ineq','fun':abTempWithinGround},
     ]
 
-    y0 = [0.05, 0.05, 0.06]
+    y0 = [0.05, 0.01, 0.02]
 
-    bound = ((0.0,0.12),(0.001,0.2),(0,0.2))
-    
+    bound = ((0.0,0.12),(0.001,0.1),(0,0.1))
+
+     #Only if using Cobyla
+    '''
+    for factor in range(len(bound)):
+        lower, upper = bound[factor]
+        l = {'type': 'ineq',
+            'fun': lambda x, lb=lower, i=factor: x[i] - lb}
+        u = {'type': 'ineq',
+            'fun': lambda x, ub=upper, i=factor: ub - x[i]}
+        constrain.append(l)
+        constrain.append(u)
+    '''
 
     result = minimize(maximizeThrust, y0, constraints = constrain, method='SLSQP', bounds = bound)
     # Print the results
@@ -58,12 +69,15 @@ if __name__ == "__main__":
     print("Success:", result.success)
     print("Message:", result.message)
 
-    Ground = Engine(285, 100, 0, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
+    Ground = Engine(285, 100*1000, 0, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
 
 
     results = Ground.run_cycle()
 
+
     print("\n\nGROUND Max Thrust")
+    print("Optimal Congifuration for ground: ","b = ", result.x[0], "f = ",result.x[1], "f_ab = ",result.x[2])
+ 
  
     print("\n=== STATION STATES (P (kPa), T(K)) ===")
     for key in [
@@ -123,26 +137,26 @@ if __name__ == "__main__":
     #Cruise
     #FlightMaxThrust
 
-    Flight = Engine(220, 29, 0.86, Prc, Prf, Beta, 0.12, 0.024, 0.032)
+    Flight = Engine(220, 29*1000, 0.86, Prc, Prf, Beta, 0.11, 0.024, 0.032)
 
 
     def maximizeFlightThrust(y):
-        Flight.change(Prc, Prf, Beta,y[0],y[1],y[2])
+        Flight.change(Prf, Prc,Beta,y[0],y[1],y[2])
         return -Flight.maximizeThrust()
 
 
     def turbineTempWithinFlight(y):
-        Flight.change(Prc, Prf, Beta,y[0],y[1],y[2])
+        Flight.change(Prf, Prc, Beta,y[0],y[1],y[2])
         return Flight.turbineTemperatureContraint()
  
     
     def abTempWithinFlight(y):
-        Flight.change(Prc, Prf, Beta,y[0],y[1],y[2])
+        Flight.change(Prf, Prc, Beta,y[0],y[1],y[2])
         return Flight.abTemperatureContraint()
 
     
     def withinWorkFlight(y):
-        return Flight.withinFanTurbineWork(Prc, Prf, Beta,y[0],y[1],y[2])
+        return Flight.withinFanTurbineWork(Prf, Prc,Beta,y[0],y[1],y[2])
     
     constrain = [
         {'type':'ineq','fun':withinWorkFlight},
@@ -150,9 +164,9 @@ if __name__ == "__main__":
         {'type':'ineq','fun':abTempWithinFlight},
     ]
 
-    y0 = [0.12, 0.02, 0.03]
+    y0 = [0.05, 0.01, 0.02]
 
-    bound = ((0.0,0.12),(0.001,0.2),(0,0.2))
+    bound = ((0.0,0.12),(0.001,0.1),(0,0.1))
     
 
     result = minimize(maximizeFlightThrust, y0, constraints = constrain, method='SLSQP', bounds = bound)
@@ -162,12 +176,15 @@ if __name__ == "__main__":
     print("Success:", result.success)
     print("Message:", result.message)
 
-    Flight = Engine(220, 29, 0.86, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
+    Flight = Engine(220, 29*1000, 0.86, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
 
 
     results = Flight.run_cycle()
 
     print("\n\nFlight Max Thrust")
+
+    print("Optimal Congifuration for Flight: ","b = ", result.x[0], "f = ",result.x[1], "f_ab = ",result.x[2])
+
  
     print("\n=== STATION STATES (P (kPa), T(K)) ===")
     for key in [
