@@ -20,25 +20,25 @@ if __name__ == "__main__":
 
     #GroundMaxThrust
 
-    Ground = Engine(285, 100*1000, 0, Prc, Prf, Beta, 0.012, 0.024, 0.032)
+    ground = Engine(285, 100*1000, 0, Prc, Prf, Beta, 0.012, 0.024, 0.032)
 
 
     def maximizeThrust(y):
-        Ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
-        return -Ground.maximizeThrust()
+        ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
+        return -ground.maximizeThrust()
 
 
     def turbineTempWithinGround(y):
-        Ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
-        return Ground.turbineTemperatureContraint()
+        ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
+        return ground.turbineTemperatureContraint()
  
     
     def abTempWithinGround(y):
-        Ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
-        return Ground.abTemperatureContraint()
+        ground.change(Prf, Prc, Beta,y[0],y[1],y[2])
+        return ground.abTemperatureContraint()
     
     def withinWorkGround(y):
-        return Ground.withinFanTurbineWork(Prf, Prc, Beta,y[0],y[1],y[2])
+        return ground.withinFanTurbineWork(Prf, Prc, Beta,y[0],y[1],y[2])
     
     constrain = [
         {'type':'ineq','fun':withinWorkGround},
@@ -50,18 +50,6 @@ if __name__ == "__main__":
 
     bound = ((0.0,0.12),(0.001,0.1),(0,0.1))
 
-     #Only if using Cobyla
-    '''
-    for factor in range(len(bound)):
-        lower, upper = bound[factor]
-        l = {'type': 'ineq',
-            'fun': lambda x, lb=lower, i=factor: x[i] - lb}
-        u = {'type': 'ineq',
-            'fun': lambda x, ub=upper, i=factor: ub - x[i]}
-        constrain.append(l)
-        constrain.append(u)
-    '''
-
     result = minimize(maximizeThrust, y0, constraints = constrain, method='SLSQP', bounds = bound)
     # Print the results
     print("Optimization results:")
@@ -69,94 +57,43 @@ if __name__ == "__main__":
     print("Success:", result.success)
     print("Message:", result.message)
 
-    Ground = Engine(285, 100*1000, 0, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
+    ground = Engine(285, 100*1000, 0, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
 
 
-    results = Ground.run_cycle()
+    results = ground.run_cycle()
 
 
     print("\n\nGROUND Max Thrust")
     print("Optimal Congifuration for ground: ","b = ", result.x[0], "f = ",result.x[1], "f_ab = ",result.x[2])
  
  
-    print("\n=== STATION STATES (P (kPa), T(K)) ===")
-    for key in [
-        "Inlet (P_o2, T_o2)",
-        "Fan exit (P_o3f, T_o3f)",
-        "Compressor exit (P_o3, T_o3)",
-        "Burner exit (P_o4, T_o4)",
-        "Core turbine exit (P_o5_1, T_o5_1))",
-        "Turbine mixer exit (P_o5m, T_o5m)",
-        "Fan turbine exit (P_o5_2, T_o5_2)",
-        "Afterburner exit (P_o6,  T_o6)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== FUEL PUMP ===")
-    for key in [
-        "Fuel pump exit pressure (kPa)",
-        "Fuel pump work (kJ/kg)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== NOZZLE EXIT CONDITIONS ===")
-    for key in [
-        "Core nozzle sep (T_e, P_e)",
-        "Fan nozzle sep (T_ef, P_ef)",
-        "Combined nozzles (T_o7, gammma_nm, P_o7, T_ec)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== PERFORMANCE: SEPARATE NOZZLES ===")
-    for key in [
-        "Separate Nozzle Speeds (u_e (m/s), u_ef (m/s))",
-        "Separate Nozzle Performance (T/ma (kNs/kg), TSFC (kg/kNs), eff_th (%), eff_p(%), eff_o(%))", 
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== Work Required ===")
-    for key in [
-        "Work Required in kJ/kg (w_c, w_p, w_ft)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== Max F/A Ratios ===")
-    for key in [
-        "Max F/A Ratios (f_max, f_max_ab)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== PERFORMANCE: COMBINED NOZZLE ===")
-    for key in [
-        "Combined Nozzle Performance (u_ec, T/ma, TSFC, eff_th, eff_p, eff_o)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
+    ground.outputResults(results)
 
 
 
     #Cruise
     #FlightMaxThrust
 
-    Flight = Engine(220, 29*1000, 0.86, Prc, Prf, Beta, 0.11, 0.024, 0.032)
+    flight = Engine(220, 29*1000, 0.86, Prc, Prf, Beta, 0.11, 0.024, 0.032)
 
 
     def maximizeFlightThrust(y):
-        Flight.change(Prf, Prc,Beta,y[0],y[1],y[2])
-        return -Flight.maximizeThrust()
+        flight.change(Prf, Prc,Beta,y[0],y[1],y[2])
+        return -flight.maximizeThrust()
 
 
     def turbineTempWithinFlight(y):
-        Flight.change(Prf, Prc, Beta,y[0],y[1],y[2])
-        return Flight.turbineTemperatureContraint()
+        flight.change(Prf, Prc, Beta,y[0],y[1],y[2])
+        return flight.turbineTemperatureContraint()
  
     
     def abTempWithinFlight(y):
-        Flight.change(Prf, Prc, Beta,y[0],y[1],y[2])
-        return Flight.abTemperatureContraint()
+        flight.change(Prf, Prc, Beta,y[0],y[1],y[2])
+        return flight.abTemperatureContraint()
 
     
     def withinWorkFlight(y):
-        return Flight.withinFanTurbineWork(Prf, Prc,Beta,y[0],y[1],y[2])
+        return flight.withinFanTurbineWork(Prf, Prc,Beta,y[0],y[1],y[2])
     
     constrain = [
         {'type':'ineq','fun':withinWorkFlight},
@@ -176,68 +113,17 @@ if __name__ == "__main__":
     print("Success:", result.success)
     print("Message:", result.message)
 
-    Flight = Engine(220, 29*1000, 0.86, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
+    flight = Engine(220, 29*1000, 0.86, Prc, Prf, Beta, result.x[0], result.x[1], result.x[2])
 
 
-    results = Flight.run_cycle()
+    results = flight.run_cycle()
 
     print("\n\nFlight Max Thrust")
 
     print("Optimal Congifuration for Flight: ","b = ", result.x[0], "f = ",result.x[1], "f_ab = ",result.x[2])
 
  
-    print("\n=== STATION STATES (P (kPa), T(K)) ===")
-    for key in [
-        "Inlet (P_o2, T_o2)",
-        "Fan exit (P_o3f, T_o3f)",
-        "Compressor exit (P_o3, T_o3)",
-        "Burner exit (P_o4, T_o4)",
-        "Core turbine exit (P_o5_1, T_o5_1))",
-        "Turbine mixer exit (P_o5m, T_o5m)",
-        "Fan turbine exit (P_o5_2, T_o5_2)",
-        "Afterburner exit (P_o6,  T_o6)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== FUEL PUMP ===")
-    for key in [
-        "Fuel pump exit pressure (kPa)",
-        "Fuel pump work (kJ/kg)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== NOZZLE EXIT CONDITIONS ===")
-    for key in [
-        "Core nozzle sep (T_e, P_e)",
-        "Fan nozzle sep (T_ef, P_ef)",
-        "Combined nozzles (T_o7, gammma_nm, P_o7, T_ec)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== PERFORMANCE: SEPARATE NOZZLES ===")
-    for key in [
-        "Separate Nozzle Speeds (u_e (m/s), u_ef (m/s))",
-        "Separate Nozzle Performance (T/ma (kNs/kg), TSFC (kg/kNs), eff_th (%), eff_p(%), eff_o(%))", 
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== Work Required ===")
-    for key in [
-        "Work Required in kJ/kg (w_c, w_p, w_ft)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
-
-    print("\n=== Max F/A Ratios ===")
-    for key in [
-        "Max F/A Ratios (f_max, f_max_ab)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
- 
-    print("\n=== PERFORMANCE: COMBINED NOZZLE ===")
-    for key in [
-        "Combined Nozzle Performance (u_ec, T/ma, TSFC, eff_th, eff_p, eff_o)",
-    ]:
-        print(f"{key:35s}: {results[key]}")
+    flight.outputResults(results)
    
 
     
