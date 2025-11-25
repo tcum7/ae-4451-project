@@ -35,6 +35,12 @@ class Engine:
         self.rho_amb = P_a / (T_a * self.R)
         self.c_inf = math.sqrt(self.gamma_air * self.R * T_a)
         self.v_inf = self.c_inf * M
+
+        # Fuel pump parameters (from project spec)
+        self.eta_pump   = 0.35          # pump efficiency
+        self.rho_fuel   = 780.0         # kg/m^3
+        self.p_f1       = 104e3         # Pa  (fuel tank pressure)
+        self.deltaP_inj = 550e3         # Pa  (injector overpressure)
  
     # ------------------------------------------------------------
     # INLET
@@ -56,24 +62,23 @@ class Engine:
     # ------------------------------------------------------------
     # FAN
     # ------------------------------------------------------------
-    def fan(self, P, T):
+    def fan(self, P_o, T_o):
         gamma = 1.4
  
-        eff_fan = (self.Prf**((gamma - 1)/gamma) - 1.0) / \
-                  (self.Prf**((gamma - 1)/(gamma*0.90)) - 1.0)
+        eff_fan = (self.Prf**((gamma - 1)/gamma) - 1.0) / (self.Prf**((gamma - 1)/(gamma*0.90)) - 1.0)
  
         # Specific drag constant C_beta_1 = 0.245 kN·s/kg
         C_beta_1 = 0.245
         delta_drag = C_beta_1 * self.M**2 * (self.P_a/101325.0) * self.Beta**1.5
  
-        T_o_fan = T * (1.0 + (1.0/eff_fan) * (self.Prf**((gamma - 1)/gamma) - 1.0))
-        P_o_fan = P * self.Prf
+        T_o_fan = T_o * (1.0 + (1.0/eff_fan) * (self.Prf**((gamma - 1)/gamma) - 1.0))
+        P_o_fan = P_o * self.Prf
  
         Cp = gamma * self.R / (gamma - 1.0)
-        work_total = Cp * (T_o_fan - T)
-        work_core = (1.0 + self.Beta) * work_total
+        work_c = Cp * (T_o_fan - T_o)
+        work_fan = (1.0 + self.Beta) * work_c
  
-        return P_o_fan, T_o_fan, delta_drag, work_total, work_core
+        return P_o_fan, T_o_fan, delta_drag, work_fan
  
     # ------------------------------------------------------------
     # COMPRESSOR
@@ -93,6 +98,30 @@ class Engine:
         return P_o_c, T_o_c, work
  
     # ------------------------------------------------------------
+    # FUEL PUMP
+    # ------------------------------------------------------------
+    def fuel_pump(self, P3):
+        """
+        Fuel pump model.
+        Input:
+            P3 : combustor/burner inlet pressure (Pa)  ~ compressor exit
+        Returns:
+            P_f2   : fuel pump exit pressure (Pa)
+            w_pump : pump power per unit core air mass flow (W per (kg/s) of air)
+        """
+        # Exit fuel pressure (must be ΔP_inj above combustor inlet)
+        P_f2 = P3 + self.deltaP_inj
+
+        # Actual pressure rise across the pump (from storage to injection manifold)
+        deltaP_pump = P_f2 - self.p_f1
+
+        # Work per unit core air mass flow
+        fuel_ratio_total = self.f + self.f_ab
+        w_pump = fuel_ratio_total * deltaP_pump / (self.eta_pump * self.rho_fuel)
+
+        return P_f2, w_pump
+
+    # ------------------------------------------------------------
     # BURNER
     # ------------------------------------------------------------
     def burner(self, P_o, T_o):
@@ -103,8 +132,15 @@ class Engine:
  
         T_o_burner = (eff_burner * self.f * Q / Cp + (1.0 - self.b) * T_o) / (1.0 - self.b + self.f)
         P_o_burner = P_o * 0.98
+
+        bmax = 0.12
+        C_b_1 = 700
+        T_max = 1300+C_b_1*math.sqrt(self.b/bmax)
+
+        f_max = (1.0 - self.b)*(T_o-T_max)/(T_max-eff_burner*Q/Cp)
+        withinTemp = T_o_burner<T_max
  
-        return T_o_burner, P_o_burner
+        return P_o_burner,T_o_burner, f_max, withinTemp
  
     # ------------------------------------------------------------
     # CORE TURBINE
@@ -127,8 +163,14 @@ class Engine:
     # ------------------------------------------------------------
     def turbinemixer(self, P_t, T_t, T_comp):
         # Bleed air (b) is reintroduced at turbine exit
+        gamma_mix = 1.34
         T_mix = T_t * (1.0 - self.b) + self.b * T_comp
-        return P_t, T_mix
+        Cp_mix  = gamma_mix * self.R_uni/28.8 / (gamma_mix - 1)
+        P_mix = P_t*(T_mix/T_t)**(Cp_mix/self.R)*(T_t/T_comp)**(Cp_mix/self.R*self.b)
+
+
+
+        return P_mix, T_mix
  
     # ------------------------------------------------------------
     # FAN TURBINE
@@ -156,7 +198,13 @@ class Engine:
  
         T_o_ab = (0.96 * self.f_ab * Q / Cp + (1.0 + self.f) * T_o) / (1.0 + self.f + self.f_ab)
         P_o_ab = P_o * 0.97
-        return P_o_ab, T_o_ab
+
+        T_max = 2200
+
+        f_max = (1.0 + self.f)*(T_o-T_max)/(T_max-0.96*Q/Cp)
+        withinTemp = T_o_ab<T_max
+
+        return P_o_ab, T_o_ab, f_max, withinTemp
  
     #---------------------------------
     # CORE NOZZLE (SEPARATE)
@@ -168,7 +216,7 @@ class Engine:
         T_e = T_o * (1 - 0.95 * (1 - (self.P_a / P_o)**((gamma - 1) / gamma)))
         u_e = math.sqrt(2 * Cp_cN * (T_o - T_e))
         # Project assumption: nozzle exit pressure = ambient
-        return T_e, u_e
+        return T_e, u_e, self.P_a
  
     #---------------------------------
     # FAN NOZZLE (SEPARATE)
@@ -183,7 +231,7 @@ class Engine:
         T_e = T_o * (1 - 0.97 * (1 - (self.P_a / P_o)**((gamma - 1) / gamma)))
         u_e = math.sqrt(2 * Cp_cN * (T_o - T_e))
         # Project assumption: nozzle exit pressure = ambient
-        return T_e, u_e
+        return T_e, u_e, self.P_a
  
     # ------------------------------------------------------------
     # COMBINED NOZZLE (MIXER + COMBINED NOZZLE)
@@ -193,41 +241,42 @@ class Engine:
         Combined Nozzle (Nozzle Mixer + Combined Nozzle).
         We use a simple reversible mixing approximation + loss.
         """
-        # 1. Mass flows
-        m_core = 1.0 - self.b + self.f + self.f_ab
-        m_byp  = self.Beta
+
  
-        # 2. Mixing temperature (approx mass-weighted)
-        T_mix_guess = (m_core*T_core + m_byp*T_fan) / (m_core + m_byp)
-        gamma_mix = 1.44 - 1.39e-4*T_mix_guess + 3.57e-8*(T_mix_guess**2)
+        # Mixing temperature (approx mass-weighted)
+        T_mix= (self.Beta*T_fan+(1+self.f+self.f_ab)*T_core) / (1+self.f+self.f_ab+self.Beta)
+        gamma_mix = 1.44 - 1.39e-4*T_mix + 3.57e-8*(T_mix**2)
         Cp_mix    = gamma_mix * self.R_uni/28.8 / (gamma_mix - 1)
-        T_mix = (m_core*Cp_mix*T_core + m_byp*Cp_mix*T_fan) / ((m_core + m_byp)*Cp_mix)
  
-        # 3. Simple reversible stagnation pressure mix + loss
-        P_mix_rev = (m_core*P_core + m_byp*P_fan) / (m_core + m_byp)
+        #Derived Pressure Equation
+        fan_ratio = self.Beta/(1+self.f+self.f_ab+self.Beta)
+        P_mix_rev = P_core*(P_fan/P_core)**(fan_ratio)*(T_mix/T_core)**(Cp_mix/self.R)*(T_core/T_fan)**(Cp_mix/self.R*fan_ratio)
         P_mix = 0.80 * P_mix_rev
  
-        # 4. Combined nozzle expansion
+        # Combined nozzle expansion
         gamma_cn = 1.37
         eta_n    = 0.95
         Cp_cn    = gamma_cn * self.R_uni/28.8 / (gamma_cn - 1)
- 
-        T_ideal = T_mix * (self.P_a / P_mix)**((gamma_cn - 1)/gamma_cn)
-        T_e = T_mix - eta_n * (T_mix - T_ideal)
+
+        T_e = T_mix * (1 - eta_n * (1 - (self.P_a / P_mix)**((gamma_cn - 1) / gamma_cn)))
         u_e = math.sqrt(2 * Cp_cn * (T_mix - T_e))
  
-        return T_e, P_mix, u_e
+        return T_mix, gamma_mix, P_mix, T_e, u_e, self.P_a
  
     # ------------------------------------------------------------
     # SEPARATE NOZZLE PERFORMANCE (S_eff and TSFC)
     # ------------------------------------------------------------
     def separate_nozzle_performance(self, u_e_core, u_e_fan, drag):
+        
         """
         Effective specific thrust and TSFC using SEPARATE nozzles.
         Uses the project-style momentum-only expression:
             τ/m_a = (1+f+f_ab)*u_ec + β*u_ef - (1+β)*V∞
         and assumes P_e = P_a (no pressure thrust).
         """
+
+        Q = 45e6 
+
         V_inf = self.v_inf
  
         # Specific thrust (no drag), per unit core air mass (kN·s/kg)
@@ -240,8 +289,19 @@ class Engine:
  
         # TSFC based on separate-nozzle effective specific thrust
         tsfc_val = (self.f + self.f_ab) / S_eff
+
+        #Thermal Efficiency
+        delta_KE = ((1.0+self.f+self.f_ab)*(u_e_core**2)+self.Beta*(u_e_fan**2)-(1.0 + self.Beta)*(V_inf**2))/2
+        n_th = delta_KE/((self.f+self.f_ab)*Q)
+
+        #Propulsive Efficiency
+        n_p = S_eff*V_inf*1000/(delta_KE)
+
+        #Overall Efficiency
+        n_o = n_th*n_p
+
  
-        return S_eff, tsfc_val
+        return S_eff, tsfc_val, n_th, n_p, n_o
  
     # ------------------------------------------------------------
     # COMBINED NOZZLE PERFORMANCE (S_eff and TSFC)
@@ -252,6 +312,7 @@ class Engine:
         Project-style expression:
             τ/m_a = (1+f+f_ab+β)*u_ec - (1+β)*V∞
         """
+        Q = 45e6 
         V_inf = self.v_inf
  
         S_no_drag = ((1.0 + self.f + self.f_ab + self.Beta) * u_e_comb
@@ -259,8 +320,18 @@ class Engine:
  
         S_eff = S_no_drag - drag
         tsfc_val = (self.f + self.f_ab) / S_eff
+
+        #Thermal Efficiency
+        delta_KE = ((1+self.f+self.f_ab+self.Beta)*(u_e_comb**2)-(1.0 + self.Beta) * V_inf**2)/2
+        n_th = delta_KE/((self.f+self.f_ab)*Q)
+
+        #Propulsive Efficiency
+        n_p = 1000*S_eff*V_inf/(delta_KE)
+
+        #Overall Efficiency
+        n_o = n_th*n_p
  
-        return S_eff, tsfc_val
+        return S_eff, tsfc_val, n_th, n_p, n_o
  
     # ------------------------------------------------------------
     # TSFC helper (if ever needed directly)
@@ -273,49 +344,64 @@ class Engine:
     # ------------------------------------------------------------
     def run_cycle(self):
         # 1. Upstream components
-        P2,  T2  = self.inlet()
-        P13, T13, drag, _, W_fan_core = self.fan(P2, T2)
-        P3,  T3,  W_comp = self.compressor(P13, T13)
-        T4,  P4  = self.burner(P3, T3)
-        P5,  T5  = self.turbine(P4, T4, W_comp)
-        P6,  T6  = self.turbinemixer(P5, T5, T3)
-        P52, T52 = self.fanturbine(P6, T6, W_fan_core)
-        P7,  T7  = self.afterburner(P52, T52)
+        P_o2,  T_o2  = self.inlet()
+        P_o3f, T_o3f, drag, w_ft = self.fan(P_o2, T_o2)
+        P_o3,  T_o3, w_c = self.compressor(P_o3f, T_o3f)
+        P_o4, T_o4, f_max, withinTemp_o4  = self.burner(P_o3, T_o3)
+        P_o5_1,  T_o5_1  = self.turbine(P_o4, T_o4, w_c)
+        P_o5m,  T_o5m  = self.turbinemixer(P_o5_1, T_o5_1, T_o3)
+        P_o5_2, T_o5_2 = self.fanturbine(P_o5m, T_o5m, w_ft)
+        P_o6,  T_o6, f_max_ab, withinTemp_o6  = self.afterburner(P_o5_2, T_o5_2)
+
+        # 1.2 Fuel Pump
+        P_f2, w_p = self.fuel_pump(P_o3)
  
         # 2. Separate nozzles
-        T_e_core, u_e_core = self.corenozzle(P7,  T7)
-        T_e_fan,  u_e_fan  = self.fannozzle(P13, T13)
+
+        T_e, u_e, P_e = self.corenozzle(P_o6,  T_o6)
+        T_ef,  u_ef, P_ef  = self.fannozzle(P_o3f, T_o3f)
  
         # 3. Combined nozzle
-        T_e_comb, P_mix, u_e_comb = self.combinednozzle(P7, T7, P13, T13)
+        T_o7, gammma_nm, P_o7, T_ec, u_ec, p_ec = self.combinednozzle(P_o6, T_o6, P_o3f, T_o3f)
  
         # 4. Thrust and TSFC for both nozzle configurations
-        S_eff_sep,  tsfc_sep  = self.separate_nozzle_performance(u_e_core, u_e_fan,  drag)
-        S_eff_comb, tsfc_comb = self.combined_nozzle_performance(u_e_comb,        drag)
+        S_eff_sep,  tsfc_sep, n_th_sep, n_p_sep, n_o_sep  = self.separate_nozzle_performance(u_e, u_ef, drag)
+        S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb = self.combined_nozzle_performance(u_ec, drag)
  
         return {
             # Station states
-            "Inlet (P2, T2)":                  (P2, T2),
-            "Fan exit (P13, T13)":             (P13, T13),
-            "Compressor exit (P3, T3)":        (P3, T3),
-            "Burner exit (P4, T4)":            (P4, T4),
-            "Core turbine exit (P5, T5)":      (P5, T5),
-            "Turbine mixer exit (P6, T6)":     (P6, T6),
-            "Fan turbine exit (P52, T52)":     (P52, T52),
-            "Afterburner exit (P7, T7)":       (P7, T7),
+            "Inlet (P_o2, T_o2)":                           (P_o2, T_o2),
+            "Fan exit (P_o3f, T_o3f)":                      (P_o3f, T_o3f),
+            "Compressor exit (P_o3, T_o3)":                 (P_o3, T_o3),
+            "Burner exit (P_o4, T_o4)":                     (P_o4, T_o4),
+            "Core turbine exit (P_o5_1, T_o5_1))":          (P_o5_1, T_o5_1),
+            "Turbine mixer exit (P_o5m, T_o5m)":            (P_o5m, T_o5m),
+            "Fan turbine exit (P_o5_2, T_o5_2)":            (P_o5_2, T_o5_2),
+            "Afterburner exit (P_o6,  T_o6)":               (P_o6,  T_o6),
  
+            # Fuel pump parameters
+            "Fuel pump exit pressure (Pa)":        P_f2,
+            "Fuel pump work (J/kg)":   w_p,
+
             # Nozzle exit conditions
-            "Core nozzle sep (T_e, u_e)":      (T_e_core, u_e_core),
-            "Fan nozzle sep (T_e, u_e)":       (T_e_fan,  u_e_fan),
-            "Combined nozzle (T_e, u_e, P_mix)": (T_e_comb, u_e_comb, P_mix),
+            "Core nozzle sep (T_e, P_e)":      (T_e, P_e),
+            "Fan nozzle sep (T_ef, P_ef)":       (T_ef,  P_ef),
+            "Combined nozzles (T_o7, gammma_nm, P_o7, T_ec)": (T_o7, gammma_nm, P_o7, T_ec),
  
             # Performance: separate nozzles
-            "S_eff_sep (kN s/kg)":             S_eff_sep,
-            "TSFC_sep (kg/(kN s))":            tsfc_sep,
- 
+            "Separate Nozzle Speeds (u_e, u_ef)": (u_e, u_ef),
+            "Separate Nozzle Performance (T/ma, TSFC, eff_th, eff_p, eff_o)": (S_eff_sep, tsfc_sep, n_th_sep, n_p_sep, n_o_sep), 
+
+            # Work Required
+            "Work Required (w_c, w_p, w_ft)": (w_c, w_p, w_ft),
+
+            # Max Fuel/Air Ratios 
+            "Max F/A Ratios (f_max, f_max_ab)": (f_max, f_max_ab),
+
             # Performance: combined nozzle
-            "S_eff_comb (kN s/kg)":            S_eff_comb,
-            "TSFC_comb (kg/(kN s))":           tsfc_comb,
+            "Combined Nozzle Performance (u_ec, T/ma, TSFC, eff_th, eff_p, eff_o)": (u_ec, S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb),
+
+
         }
  
  
@@ -325,49 +411,67 @@ class Engine:
 if __name__ == "__main__":
     engine = Engine(
         T_a=220.0,
-        P_a=29000.0,
-        M=0.86,
-        Prc=25.0,
-        Prf=1.5,
-        Beta=6.0,
-        b=0.06,
-        f=0.040,
-        f_ab=0.0
+        P_a=10000.0,
+        M=1.5,
+        Prc=30.0,
+        Prf=1.2,
+        Beta=2.0,
+        b=0.1,
+        f=0.018,
+        f_ab=0.01
     )
  
     results = engine.run_cycle()
  
     print("\n=== STATION STATES (P, T) ===")
     for key in [
-        "Inlet (P2, T2)",
-        "Fan exit (P13, T13)",
-        "Compressor exit (P3, T3)",
-        "Burner exit (P4, T4)",
-        "Core turbine exit (P5, T5)",
-        "Turbine mixer exit (P6, T6)",
-        "Fan turbine exit (P52, T52)",
-        "Afterburner exit (P7, T7)",
+        "Inlet (P_o2, T_o2)",
+        "Fan exit (P_o3f, T_o3f)",
+        "Compressor exit (P_o3, T_o3)",
+        "Burner exit (P_o4, T_o4)",
+        "Core turbine exit (P_o5_1, T_o5_1))",
+        "Turbine mixer exit (P_o5m, T_o5m)",
+        "Fan turbine exit (P_o5_2, T_o5_2)",
+        "Afterburner exit (P_o6,  T_o6)",
+    ]:
+        print(f"{key:35s}: {results[key]}")
+
+    print("\n=== FUEL PUMP ===")
+    for key in [
+        "Fuel pump exit pressure (Pa)",
+        "Fuel pump work (J/kg)",
     ]:
         print(f"{key:35s}: {results[key]}")
  
     print("\n=== NOZZLE EXIT CONDITIONS ===")
     for key in [
-        "Core nozzle sep (T_e, u_e)",
-        "Fan nozzle sep (T_e, u_e)",
-        "Combined nozzle (T_e, u_e, P_mix)",
+        "Core nozzle sep (T_e, P_e)",
+        "Fan nozzle sep (T_ef, P_ef)",
+        "Combined nozzles (T_o7, gammma_nm, P_o7, T_ec)",
     ]:
         print(f"{key:35s}: {results[key]}")
  
     print("\n=== PERFORMANCE: SEPARATE NOZZLES ===")
     for key in [
-        "S_eff_sep (kN s/kg)",
-        "TSFC_sep (kg/(kN s))",
+        "Separate Nozzle Speeds (u_e, u_ef)",
+        "Separate Nozzle Performance (T/ma, TSFC, eff_th, eff_p, eff_o)", 
+    ]:
+        print(f"{key:35s}: {results[key]}")
+
+    print("\n=== Work Required ===")
+    for key in [
+        "Work Required (w_c, w_p, w_ft)",
+    ]:
+        print(f"{key:35s}: {results[key]}")
+
+    print("\n=== Max F/A Ratios ===")
+    for key in [
+        "Max F/A Ratios (f_max, f_max_ab)",
     ]:
         print(f"{key:35s}: {results[key]}")
  
     print("\n=== PERFORMANCE: COMBINED NOZZLE ===")
     for key in [
-        "S_eff_comb (kN s/kg)",
-        "TSFC_comb (kg/(kN s))",
+        "Combined Nozzle Performance (u_ec, T/ma, TSFC, eff_th, eff_p, eff_o)",
     ]:
         print(f"{key:35s}: {results[key]}")
