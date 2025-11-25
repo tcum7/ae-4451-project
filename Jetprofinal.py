@@ -370,36 +370,36 @@ class Engine:
  
         return {
             # Station states
-            "Inlet (P_o2, T_o2)":                           (P_o2, T_o2),
-            "Fan exit (P_o3f, T_o3f)":                      (P_o3f, T_o3f),
-            "Compressor exit (P_o3, T_o3)":                 (P_o3, T_o3),
-            "Burner exit (P_o4, T_o4)":                     (P_o4, T_o4),
-            "Core turbine exit (P_o5_1, T_o5_1))":          (P_o5_1, T_o5_1),
-            "Turbine mixer exit (P_o5m, T_o5m)":            (P_o5m, T_o5m),
-            "Fan turbine exit (P_o5_2, T_o5_2)":            (P_o5_2, T_o5_2),
-            "Afterburner exit (P_o6,  T_o6)":               (P_o6,  T_o6),
+            "Inlet (P_o2, T_o2)":                           (P_o2/1000, T_o2),
+            "Fan exit (P_o3f, T_o3f)":                      (P_o3f/1000, T_o3f),
+            "Compressor exit (P_o3, T_o3)":                 (P_o3/1000, T_o3),
+            "Burner exit (P_o4, T_o4)":                     (P_o4/1000, T_o4),
+            "Core turbine exit (P_o5_1, T_o5_1))":          (P_o5_1/1000, T_o5_1),
+            "Turbine mixer exit (P_o5m, T_o5m)":            (P_o5m/1000, T_o5m),
+            "Fan turbine exit (P_o5_2, T_o5_2)":            (P_o5_2/1000, T_o5_2),
+            "Afterburner exit (P_o6,  T_o6)":               (P_o6/1000,  T_o6),
  
             # Fuel pump parameters
-            "Fuel pump exit pressure (Pa)":        P_f2,
+            "Fuel pump exit pressure (kPa)":        P_f2/1000,
             "Fuel pump work (J/kg)":   w_p,
 
             # Nozzle exit conditions
-            "Core nozzle sep (T_e, P_e)":      (T_e, P_e),
-            "Fan nozzle sep (T_ef, P_ef)":       (T_ef,  P_ef),
-            "Combined nozzles (T_o7, gammma_nm, P_o7, T_ec)": (T_o7, gammma_nm, P_o7, T_ec),
+            "Core nozzle sep (T_e, P_e)":      (T_e, P_e/1000),
+            "Fan nozzle sep (T_ef, P_ef)":       (T_ef,  P_ef/1000),
+            "Combined nozzles (T_o7, gammma_nm, P_o7, T_ec)": (T_o7, gammma_nm, P_o7/1000, T_ec),
  
             # Performance: separate nozzles
-            "Separate Nozzle Speeds (u_e, u_ef)": (u_e, u_ef),
-            "Separate Nozzle Performance (T/ma, TSFC, eff_th, eff_p, eff_o)": (S_eff_sep, tsfc_sep, n_th_sep, n_p_sep, n_o_sep), 
+            "Separate Nozzle Speeds (u_e (m/s), u_ef (m/s))": (u_e, u_ef),
+            "Separate Nozzle Performance (T/ma (kNs/kg), TSFC (kg/kNs), eff_th (%), eff_p(%), eff_o(%))": (S_eff_sep, tsfc_sep, n_th_sep*100, n_p_sep*100, n_o_sep*100), 
 
             # Work Required
-            "Work Required (w_c, w_p, w_ft)": (w_c, w_p, w_ft),
+            "Work Required in kJ/kg (w_c, w_p, w_ft)": (w_c/1000, w_p/1000, w_ft/1000),
 
             # Max Fuel/Air Ratios 
             "Max F/A Ratios (f_max, f_max_ab)": (f_max, f_max_ab),
 
             # Performance: combined nozzle
-            "Combined Nozzle Performance (u_ec, T/ma, TSFC, eff_th, eff_p, eff_o)": (u_ec, S_eff_comb, tsfc_comb, n_th_comb, n_p_comb, n_o_comb),
+            "Combined Nozzle Performance (u_ec, T/ma, TSFC, eff_th, eff_p, eff_o)": (u_ec, S_eff_comb, tsfc_comb, n_th_comb*100, n_p_comb*100, n_o_comb*100),
 
 
         }
@@ -423,7 +423,7 @@ if __name__ == "__main__":
  
     results = engine.run_cycle()
  
-    print("\n=== STATION STATES (P, T) ===")
+    print("\n=== STATION STATES (P (kPa), T(K)) ===")
     for key in [
         "Inlet (P_o2, T_o2)",
         "Fan exit (P_o3f, T_o3f)",
@@ -438,7 +438,7 @@ if __name__ == "__main__":
 
     print("\n=== FUEL PUMP ===")
     for key in [
-        "Fuel pump exit pressure (Pa)",
+        "Fuel pump exit pressure (kPa)",
         "Fuel pump work (J/kg)",
     ]:
         print(f"{key:35s}: {results[key]}")
@@ -453,14 +453,14 @@ if __name__ == "__main__":
  
     print("\n=== PERFORMANCE: SEPARATE NOZZLES ===")
     for key in [
-        "Separate Nozzle Speeds (u_e, u_ef)",
-        "Separate Nozzle Performance (T/ma, TSFC, eff_th, eff_p, eff_o)", 
+        "Separate Nozzle Speeds (u_e (m/s), u_ef (m/s))",
+        "Separate Nozzle Performance (T/ma (kNs/kg), TSFC (kg/kNs), eff_th (%), eff_p(%), eff_o(%))", 
     ]:
         print(f"{key:35s}: {results[key]}")
 
     print("\n=== Work Required ===")
     for key in [
-        "Work Required (w_c, w_p, w_ft)",
+        "Work Required in kJ/kg (w_c, w_p, w_ft)",
     ]:
         print(f"{key:35s}: {results[key]}")
 
